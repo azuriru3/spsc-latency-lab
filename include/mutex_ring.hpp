@@ -6,7 +6,7 @@
 
 // The baseline everyone reaches for first: a mutex, a condition variable,
 // and a deque. Correct, simple, and exactly what the benchmark exists to
-// put a number on — every push takes a lock, every pop can block on the OS
+// put a number on: every push takes a lock, every pop can block on the OS
 // scheduler to wake the consumer thread back up, and the deque allocates.
 // None of that is a bug, it's just what "not lock-free" costs.
 template <typename T>

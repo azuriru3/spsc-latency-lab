@@ -12,13 +12,13 @@ inline constexpr std::size_t kCacheLineSize = 64;
 
 // Single-producer/single-consumer ring buffer. No locks, no syscalls, no
 // allocation after construction. Correct only under exactly one producer
-// thread and one consumer thread — that constraint is what makes the
+// thread and one consumer thread; that constraint is what makes the
 // lock-free algorithm this simple.
 //
 // head_/tail_ each get their own cache line, and each thread keeps a private
 // cached copy of the *other* side's index so the hot path only touches the
 // shared atomic when it actually looks like the ring is full/empty. Without
-// that, every push/pop would bounce the other thread's cache line — the
+// that, every push/pop would bounce the other thread's cache line, the
 // exact kind of hidden latency spike this repo exists to measure.
 template <typename T, std::size_t Capacity>
 class SpscRing {

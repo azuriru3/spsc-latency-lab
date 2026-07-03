@@ -1,6 +1,6 @@
 // Measures producer->consumer latency for two queues: the lock-free
 // SpscRing and a mutex+condition_variable baseline. The point isn't
-// throughput, it's the *distribution* — specifically the tail. A queue that
+// throughput, it's the *distribution*, specifically the tail. A queue that
 // looks fine on average and blows up at p99.9 is exactly the failure mode
 // the "why C++ wins in finance" argument is about: predictability under
 // load matters more than mean speed when missing a window by nanoseconds

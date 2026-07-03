@@ -1,6 +1,6 @@
 // Deliberately not assert()-based: CMakeLists.txt builds Release by
-// default, which defines NDEBUG and compiles every assert() to nothing —
-// a test suite that silently checks nothing is worse than no test suite.
+// default, which defines NDEBUG and compiles every assert() to nothing.
+// A test suite that silently checks nothing is worse than no test suite.
 // CHECK() below always evaluates and reports, regardless of build type.
 //
 // Lock-free code is exactly the kind of thing that "looks right" and is
