@@ -1,0 +1,7 @@
+build/
+out/
+*.exe
+*.obj
+*.ilk
+*.pdb
+benchmarks/results/*.csv
