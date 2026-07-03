@@ -1,6 +1,6 @@
 # spsc-latency-lab
 
-A lock-free single-producer/single-consumer ring buffer in C++20, benchmarked head-to-head against a mutex + condition_variable queue on the metric that actually matters: tail latency, not average latency.
+A lock-free single-producer/single-consumer ring buffer in C++20, benchmarked head-to-head against a mutex + condition_variable queue on the metric that matters: tail latency, not average latency.
 
 ## Why this exists
 
@@ -13,7 +13,7 @@ Two queues, same job. Hand a message from a producer thread to a consumer thread
 - **`SpscRing`**: lock-free, fixed-capacity, zero allocation after construction, zero syscalls in the hot path. Cache-line-padded indices so producer and consumer never fight over the same cache line.
 - **`MutexRing`**: `std::mutex` + `std::condition_variable` + `std::deque`. The thing everyone reaches for first. Also correct. Also allocates, locks, and depends on the OS scheduler to wake the consumer back up.
 
-The benchmark sends timestamped messages at a fixed rate and measures producer-to-consumer latency end to end, then reports p50 through p99.99 and max, not just the mean. The averages for both queues usually look fine. The tails are where the argument actually lives.
+The benchmark sends timestamped messages at a fixed rate and measures producer-to-consumer latency end to end, then reports p50 through p99.99 and max, not just the mean. The averages for both queues usually look fine. The tails are where the argument lives.
 
 ## Design
 
@@ -29,7 +29,7 @@ buffer_[Capacity]                ---> own cache line(s)
 
 Each thread keeps a private cached copy of the *other* thread's index and only re-reads the real atomic when the ring looks full or empty. Without that, every single push/pop would touch a cache line the other thread is writing to, turning every operation into a cross-core cache miss, which is a fine way to build a "lock-free" queue that's still slow. This pattern is standard (boost::lockfree::spsc_queue and the LMAX Disruptor both do a version of it); the header is small enough to read start to finish and see why it's correct.
 
-Correctness rests entirely on the fact that there is exactly **one** producer and **one** consumer thread. `head_`'s release store synchronizes-with the consumer's acquire load of it, so a buffer write is guaranteed visible before the consumer reads that slot. Same relationship in reverse for `tail_`. That's it: no CAS loops, because with a single writer per index there's nothing to compete for.
+Correctness depends on there being exactly **one** producer and **one** consumer thread. `head_`'s release store synchronizes-with the consumer's acquire load of it, so a buffer write is guaranteed visible before the consumer reads that slot. Same relationship in reverse for `tail_`. That's it: no CAS loops, because with a single writer per index there's nothing to compete for.
 
 ## Build
 
@@ -66,7 +66,7 @@ Measured on a shared/virtualized Windows host (12 logical processors, not dedica
 | p99.9 | 559,200 ns | 30,200 ns |
 | p99.99 | 1,132,600 ns | 80,100 ns |
 
-The median told the expected story: the lock-free ring is ~17x faster typically. The tail told the *opposite* story: the "deterministic" lock-free queue had a worse p99.9 than the queue that locks, allocates, and asks the OS to wake it up. Re-running it made this worse, not better (p99.9 hit 1.27ms on a second run), while the mutex baseline's tail also swung around by 10x run to run. That's not two algorithms behaving differently. That's both threads occasionally getting starved of CPU by something outside the program, most likely the hypervisor scheduling this VM's vCPUs against other tenants on the host.
+The median told the expected story: the lock-free ring is roughly 17x faster typically. The tail told the *opposite* story: the "deterministic" lock-free queue had a worse p99.9 than the queue that locks, allocates, and asks the OS to wake it up. Re-running it made this worse, not better (p99.9 hit 1.27ms on a second run), and the mutex baseline's tail swung around by 10x run to run too. Both threads were occasionally getting starved of CPU by something outside the program, most likely the hypervisor scheduling this VM's vCPUs against other tenants on the host, not by the two algorithms behaving differently.
 
 **After pinning affinity *and* raising thread priority** (`SetThreadPriority(..., THREAD_PRIORITY_TIME_CRITICAL)` + `SetPriorityClass(..., HIGH_PRIORITY_CLASS)`, both added to `bench_latency.cpp` after the first result looked wrong):
 
@@ -80,7 +80,7 @@ The median told the expected story: the lock-free ring is ~17x faster typically.
 
 Once the scheduler was told these threads actually mattered, the lock-free ring won at every percentile, reproducibly across repeated runs, and the tail gap widened rather than shrank, exactly what the underlying design predicts.
 
-This is arguably a better demonstration of the article's actual point than a clean win on the first try would have been: a lock-free algorithm removes one source of nondeterminism (locking, allocation, OS wakeup latency), but it doesn't remove *all* of them. If something else (a hypervisor, a noisy neighbor process, a scheduler that doesn't know your thread is latency-critical) can still steal the CPU out from under you, the "deterministic" queue is only as deterministic as the environment you handed it. This is precisely why real trading infrastructure goes further than "write it in C++": dedicated bare-metal hosts, isolated cores (`isolcpus`/`taskset`), disabled frequency scaling, and kernel-bypass networking all exist to remove exactly this kind of external jitter. The algorithm is necessary; on its own, it isn't sufficient.
+This ended up making a stronger case for the article than a clean win on the first try would have. A lock-free algorithm removes one source of nondeterminism (locking, allocation, OS wakeup latency), but it doesn't remove *all* of them. If something else (a hypervisor, a noisy neighbor process, a scheduler that doesn't know your thread is latency-critical) can still steal the CPU out from under you, the "deterministic" queue is only as deterministic as the environment you handed it. That's why real trading infrastructure goes further than "write it in C++": dedicated bare-metal hosts, isolated cores (`isolcpus`/`taskset`), disabled frequency scaling, and kernel-bypass networking all exist to remove this kind of external jitter. The algorithm is necessary; on its own, it isn't sufficient.
 
 ![latency comparison chart](benchmarks/results/latency_comparison.png)
 
